@@ -1,0 +1,1781 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>员工年假记录管理系统</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
+    
+    <!-- 配置Tailwind自定义颜色和字体 -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#165DFF',
+                        secondary: '#36CFC9',
+                        accent: '#722ED1',
+                        success: '#52C41A',
+                        warning: '#FAAD14',
+                        danger: '#F5222D',
+                        neutral: '#1F2329',
+                        'neutral-light': '#86909C'
+                    },
+                    fontFamily: {
+                        inter: ['Inter', 'system-ui', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .content-auto {
+                content-visibility: auto;
+            }
+            .card-shadow {
+                box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+            }
+            .transition-all-300 {
+                transition: all 300ms ease-in-out;
+            }
+            .calendar-day {
+                aspect-ratio: 1/1;
+            }
+            .calendar-day-selected {
+                @apply bg-primary text-white;
+            }
+            .calendar-day-leave {
+                @apply bg-danger/20 text-danger;
+            }
+            .calendar-day-weekend {
+                @apply bg-gray-100;
+            }
+            .calendar-day-today {
+                @apply ring-2 ring-primary;
+            }
+        }
+    </style>
+</head>
+<body class="font-inter bg-gray-50 min-h-screen flex flex-col">
+    <!-- 页面加载动画 -->
+    <div id="loader" class="fixed inset-0 z-50 flex items-center justify-center bg-white">
+        <div class="flex flex-col items-center">
+            <div class="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+            <p class="mt-4 text-primary font-medium">加载中...</p>
+        </div>
+    </div>
+
+    <!-- 登录页面 -->
+    <div id="login-page" class="flex-1 flex items-center justify-center p-4">
+        <div class="w-full max-w-md bg-white rounded-xl card-shadow p-8 transform transition-all duration-300 hover:scale-[1.02]">
+            <div class="text-center mb-8">
+                <h1 class="text-[clamp(1.5rem,3vw,2rem)] font-bold text-neutral mb-2">员工年假记录系统</h1>
+                <p class="text-neutral-light">请登录您的账户</p>
+            </div>
+            
+            <form id="login-form" class="space-y-5">
+                <div>
+                    <label for="username" class="block text-sm font-medium text-neutral mb-1">用户名</label>
+                    <div class="relative">
+                        <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-neutral-light">
+                            <i class="fa fa-user"></i>
+                        </span>
+                        <input type="text" id="username" name="username" required
+                            class="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/50 focus:border-primary outline-none transition-all-300"
+                            placeholder="请输入用户名">
+                    </div>
+                </div>
+                
+                <div>
+                    <label for="password" class="block text-sm font-medium text-neutral mb-1">密码</label>
+                    <div class="relative">
+                        <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-neutral-light">
+                            <i class="fa fa-lock"></i>
+                        </span>
+                        <input type="password" id="password" name="password" required
+                            class="w-full pl-10 pr-10 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/50 focus:border-primary outline-none transition-all-300"
+                            placeholder="请输入密码">
+                        <button type="button" id="toggle-password" class="absolute inset-y-0 right-0 flex items-center pr-3 text-neutral-light hover:text-neutral transition-all-300">
+                            <i class="fa fa-eye-slash"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center">
+                        <input type="checkbox" id="remember-me" class="w-4 h-4 text-primary border-gray-300 rounded focus:ring-primary">
+                        <label for="remember-me" class="ml-2 block text-sm text-neutral-light">记住我</label>
+                    </div>
+                </div>
+                
+                <button type="submit" class="w-full bg-primary hover:bg-primary/90 text-white font-medium py-2.5 px-4 rounded-lg transition-all-300 flex items-center justify-center">
+                    <span>登录</span>
+                    <i class="fa fa-arrow-right ml-2"></i>
+                </button>
+            </form>
+            
+            <div id="login-error" class="mt-4 text-danger text-sm hidden">
+                <i class="fa fa-exclamation-circle mr-1"></i>
+                <span>用户名或密码错误，请重试</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- 主应用界面 -->
+    <div id="app" class="hidden flex flex-col h-screen">
+        <!-- 顶部导航栏 -->
+        <header class="bg-white border-b border-gray-200 shadow-sm z-10">
+            <div class="container mx-auto px-4">
+                <div class="flex justify-between items-center h-16">
+                    <div class="flex items-center">
+                        <h1 class="text-xl font-bold text-primary">
+                            <i class="fa fa-calendar-check-o mr-2"></i>年假记录系统
+                        </h1>
+                    </div>
+                    
+                    <div class="flex items-center space-x-4">
+                        <button id="change-password-btn" class="text-neutral-light hover:text-primary transition-all-300 px-3 py-1 rounded-md text-sm flex items-center">
+                            <i class="fa fa-key mr-1"></i> 更改密码
+                        </button>
+                        
+                        <div class="relative group">
+                            <button class="flex items-center space-x-2 px-3 py-1 rounded-md hover:bg-gray-100 transition-all-300">
+                                <img src="https://picsum.photos/id/1005/32/32" alt="用户头像" class="w-8 h-8 rounded-full object-cover">
+                                <span id="current-user" class="text-sm font-medium text-neutral"></span>
+                                <i class="fa fa-angle-down text-neutral-light"></i>
+                            </button>
+                            
+                            <div class="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg py-2 z-20 hidden group-hover:block">
+                                <a href="#" id="logout-btn" class="block px-4 py-2 text-sm text-neutral-light hover:bg-gray-100 hover:text-primary transition-all-300">
+                                    <i class="fa fa-sign-out mr-2"></i>退出登录
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- 主内容区域 -->
+        <main class="flex-1 overflow-auto bg-gray-50 p-4 md:p-6">
+            <div class="container mx-auto">
+                <!-- 员工年假概览卡片 -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                    <div class="bg-white rounded-xl p-6 card-shadow">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-neutral-light font-medium">年度总年假</h3>
+                            <span class="text-primary bg-primary/10 p-2 rounded-full">
+                                <i class="fa fa-calendar"></i>
+                            </span>
+                        </div>
+                        <div class="flex items-end">
+                            <span id="total-days" class="text-3xl font-bold text-neutral"></span>
+                            <span class="text-neutral-light ml-2 mb-1">天</span>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-white rounded-xl p-6 card-shadow">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-neutral-light font-medium">已使用年假</h3>
+                            <span class="text-danger bg-danger/10 p-2 rounded-full">
+                                <i class="fa fa-calendar-minus-o"></i>
+                            </span>
+                        </div>
+                        <div class="flex items-end">
+                            <span id="used-days" class="text-3xl font-bold text-neutral"></span>
+                            <span class="text-neutral-light ml-2 mb-1">天</span>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-white rounded-xl p-6 card-shadow">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-neutral-light font-medium">剩余年假</h3>
+                            <span class="text-success bg-success/10 p-2 rounded-full">
+                                <i class="fa fa-calendar-plus-o"></i>
+                            </span>
+                        </div>
+                        <div class="flex items-end">
+                            <span id="remaining-days" class="text-3xl font-bold text-neutral"></span>
+                            <span class="text-neutral-light ml-2 mb-1">天</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 管理功能区（仅管理员可见） -->
+                <div id="admin-section" class="hidden mb-6">
+                    <div class="bg-white rounded-xl p-6 card-shadow">
+                        <h2 class="text-lg font-bold text-neutral mb-4">管理功能</h2>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                            <button id="add-employee-btn" class="flex flex-col items-center justify-center p-4 border border-gray-200 rounded-lg hover:border-primary hover:text-primary transition-all-300">
+                                <i class="fa fa-user-plus text-2xl mb-2"></i>
+                                <span class="text-sm">新增员工</span>
+                            </button>
+                            <button id="set-annual-leave-btn" class="flex flex-col items-center justify-center p-4 border border-gray-200 rounded-lg hover:border-primary hover:text-primary transition-all-300">
+                                <i class="fa fa-cog text-2xl mb-2"></i>
+                                <span class="text-sm">设置年假天数</span>
+                            </button>
+                            <button id="manage-supervisors-btn" class="flex flex-col items-center justify-center p-4 border border-gray-200 rounded-lg hover:border-primary hover:text-primary transition-all-300">
+                                <i class="fa fa-sitemap text-2xl mb-2"></i>
+                                <span class="text-sm">管理上下级</span>
+                            </button>
+                            <button id="edit-employee-password-btn" class="flex flex-col items-center justify-center p-4 border border-gray-200 rounded-lg hover:border-primary hover:text-primary transition-all-300">
+                                <i class="fa fa-users text-2xl mb-2"></i>
+                                <span class="text-sm">修改员工密码</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 主要功能区 -->
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <!-- 左侧：年假申请表单 -->
+                    <div class="lg:col-span-1">
+                        <div class="bg-white rounded-xl p-6 card-shadow mb-6">
+                            <h2 class="text-lg font-bold text-neutral mb-4">年假申请</h2>
+                            <form id="leave-form" class="space-y-4">
+                                <div>
+                                    <label for="leave-type" class="block text-sm font-medium text-neutral mb-1">假期类型</label>
+                                    <select id="leave-type" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/50 focus:border-primary outline-none transition-all-300">
+                                        <option value="full">全天</option>
+                                        <option value="morning">上午</option>
+                                        <option value="afternoon">下午</option>
+                                    </select>
+                                </div>
+                                
+                                <div>
+                                    <label for="leave-start" class="block text-sm font-medium text-neutral mb-1">开始日期</label>
+                                    <input type="date" id="leave-start" required
+                                        class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/50 focus:border-primary outline-none transition-all-300">
+                                </div>
+                                
+                                <div id="end-date-container">
+                                    <label for="leave-end" class="block text-sm font-medium text-neutral mb-1">结束日期</label>
+                                    <input type="date" id="leave-end"
+                                        class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/50 focus:border-primary outline-none transition-all-300">
+                                </div>
+                                
+                                <div>
+                                    <label for="leave-reason" class="block text-sm font-medium text-neutral mb-1">请假原因</label>
+                                    <textarea id="leave-reason" rows="3" required
+                                        class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/50 focus:border-primary outline-none transition-all-300"
+                                        placeholder="请输入请假原因"></textarea>
+                                </div>
+                                
+                                <div id="leave-warning" class="text-warning text-sm hidden">
+                                    <i class="fa fa-exclamation-triangle mr-1"></i>
+                                    <span>请假日期包含周六，将按半天计算</span>
+                                </div>
+                                
+                                <div id="date-validation-error" class="text-danger text-sm hidden">
+                                    <i class="fa fa-times-circle mr-1"></i>
+                                    <span>请不要选择超过一年以后的日期</span>
+                                </div>
+                                
+                                <button type="submit" class="w-full bg-primary hover:bg-primary/90 text-white font-medium py-2.5 px-4 rounded-lg transition-all-300 flex items-center justify-center">
+                                    <i class="fa fa-paper-plane mr-2"></i>
+                                    <span>提交申请</span>
+                                </button>
+                            </form>
+                        </div>
+                        
+                        <!-- 待批准假（仅管理员/上司可见） -->
+                        <div id="pending-leaves-section" class="bg-white rounded-xl p-6 card-shadow hidden">
+                            <h2 class="text-lg font-bold text-neutral mb-4">
+                                <i class="fa fa-clock-o mr-2"></i>待批准假
+                            </h2>
+                            <div id="pending-leaves-list" class="space-y-4 max-h-64 overflow-y-auto pr-2">
+                                <!-- 待批准记录将在这里动态生成 -->
+                                <div class="text-center text-neutral-light py-6">暂无待批准的请假申请</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 右侧：年假记录和日历视图 -->
+                    <div class="lg:col-span-2">
+                        <!-- 视图切换 -->
+                        <div class="bg-white rounded-xl p-4 card-shadow mb-6">
+                            <div class="flex border-b border-gray-200">
+                                <button id="list-view-btn" class="py-2 px-4 text-primary border-b-2 border-primary font-medium">
+                                    <i class="fa fa-list mr-1"></i>列表视图
+                                </button>
+                                <button id="calendar-view-btn" class="py-2 px-4 text-neutral-light hover:text-primary transition-all-300">
+                                    <i class="fa fa-calendar mr-1"></i>日历视图
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <!-- 列表视图 -->
+                        <div id="list-view" class="bg-white rounded-xl p-6 card-shadow mb-6">
+                            <div class="flex justify-between items-center mb-4">
+                                <h2 class="text-lg font-bold text-neutral">年假记录</h2>
+                                <div class="flex space-x-2">
+                                    <button id="export-excel-btn" class="px-3 py-1.5 text-sm bg-success/10 text-success rounded-lg hover:bg-success/20 transition-all-300 flex items-center">
+                                        <i class="fa fa-file-excel-o mr-1"></i>导出Excel
+                                    </button>
+                                    <button id="export-pdf-btn" class="px-3 py-1.5 text-sm bg-danger/10 text-danger rounded-lg hover:bg-danger/20 transition-all-300 flex items-center">
+                                        <i class="fa fa-file-pdf-o mr-1"></i>导出PDF
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <div class="overflow-x-auto">
+                                <table class="min-w-full divide-y divide-gray-200">
+                                    <thead>
+                                        <tr>
+                                            <th class="px-4 py-3 bg-gray-50 text-left text-xs font-medium text-neutral-light uppercase tracking-wider">日期</th>
+                                            <th class="px-4 py-3 bg-gray-50 text-left text-xs font-medium text-neutral-light uppercase tracking-wider">类型</th>
+                                            <th class="px-4 py-3 bg-gray-50 text-left text-xs font-medium text-neutral-light uppercase tracking-wider">天数</th>
+                                            <th class="px-4 py-3 bg-gray-50 text-left text-xs font-medium text-neutral-light uppercase tracking-wider">原因</th>
+                                            <th class="px-4 py-3 bg-gray-50 text-left text-xs font-medium text-neutral-light uppercase tracking-wider">状态</th>
+                                            <th id="approver-header" class="px-4 py-3 bg-gray-50 text-left text-xs font-medium text-neutral-light uppercase tracking-wider hidden">审批人</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="leave-records" class="bg-white divide-y divide-gray-200">
+                                        <!-- 请假记录将在这里动态生成 -->
+                                        <tr>
+                                            <td colspan="6" class="px-4 py-8 text-center text-neutral-light">暂无请假记录</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        
+                        <!-- 日历视图 -->
+                        <div id="calendar-view" class="bg-white rounded-xl p-6 card-shadow hidden">
+                            <div class="flex justify-between items-center mb-6">
+                                <h2 class="text-lg font-bold text-neutral">
+                                    <span id="current-month"></span> 年假日历
+                                </h2>
+                                <div class="flex space-x-2">
+                                    <button id="prev-month" class="p-2 rounded-full hover:bg-gray-100 transition-all-300">
+                                        <i class="fa fa-chevron-left text-neutral-light"></i>
+                                    </button>
+                                    <button id="today-btn" class="px-3 py-1 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 transition-all-300">
+                                        今天
+                                    </button>
+                                    <button id="next-month" class="p-2 rounded-full hover:bg-gray-100 transition-all-300">
+                                        <i class="fa fa-chevron-right text-neutral-light"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <!-- 星期标题 -->
+                            <div class="grid grid-cols-7 mb-2">
+                                <div class="text-center text-sm font-medium text-neutral-light">周日</div>
+                                <div class="text-center text-sm font-medium text-neutral-light">周一</div>
+                                <div class="text-center text-sm font-medium text-neutral-light">周二</div>
+                                <div class="text-center text-sm font-medium text-neutral-light">周三</div>
+                                <div class="text-center text-sm font-medium text-neutral-light">周四</div>
+                                <div class="text-center text-sm font-medium text-neutral-light">周五</div>
+                                <div class="text-center text-sm font-medium text-neutral-light">周六</div>
+                            </div>
+                            
+                            <!-- 日历网格 -->
+                            <div id="calendar-grid" class="grid grid-cols-7 gap-1">
+                                <!-- 日历单元格将在这里动态生成 -->
+                            </div>
+                            
+                            <!-- 日历图例 -->
+                            <div class="flex items-center justify-center space-x-6 mt-4 text-sm">
+                                <div class="flex items-center">
+                                    <div class="w-4 h-4 bg-danger/20 border border-danger/30 rounded mr-2"></div>
+                                    <span class="text-neutral-light">年假</span>
+                                </div>
+                                <div class="flex items-center">
+                                    <div class="w-4 h-4 bg-warning/20 border border-warning/30 rounded mr-2"></div>
+                                    <span class="text-neutral-light">待批准</span>
+                                </div>
+                                <div class="flex items-center">
+                                    <div class="w-4 h-4 bg-gray-100 border border-gray-200 rounded mr-2"></div>
+                                    <span class="text-neutral-light">周六</span>
+                                </div>
+                                <div class="flex items-center">
+                                    <div class="w-4 h-4 border-2 border-primary rounded mr-2"></div>
+                                    <span class="text-neutral-light">今天</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- 模态框通用结构 -->
+    <div id="modal-backdrop" class="fixed inset-0 bg-black/50 z-50 hidden flex items-center justify-center p-4">
+        <div id="modal-container" class="bg-white rounded-xl card-shadow w-full max-w-md max-h-[90vh] overflow-y-auto transform transition-all duration-300 scale-95 opacity-0" id="modal">
+            <div class="p-6 border-b border-gray-200">
+                <div class="flex justify-between items-center">
+                    <h3 id="modal-title" class="text-lg font-bold text-neutral"></h3>
+                    <button id="close-modal" class="text-neutral-light hover:text-neutral transition-all-300">
+                        <i class="fa fa-times"></i>
+                    </button>
+                </div>
+            </div>
+            <div id="modal-content" class="p-6 space-y-4">
+                <!-- 模态框内容将在这里动态生成 -->
+            </div>
+            <div class="p-6 border-t border-gray-200 flex justify-end space-x-3">
+                <button id="modal-cancel" class="px-4 py-2 border border-gray-300 rounded-lg text-neutral hover:bg-gray-50 transition-all-300">
+                    取消
+                </button>
+                <button id="modal-confirm" class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-all-300">
+                    确认
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 通知提示 -->
+    <div id="toast" class="fixed bottom-6 right-6 px-4 py-3 rounded-lg shadow-lg transform translate-y-20 opacity-0 transition-all duration-300 flex items-center z-50">
+        <i id="toast-icon" class="mr-2 text-lg"></i>
+        <span id="toast-message"></span>
+    </div>
+
+    <script>
+        // 全局变量
+        let currentUser = null;
+        let allUsers = [];
+        let leaveRecords = [];
+        let currentDate = new Date();
+        let currentView = 'list'; // list 或 calendar
+        
+        // DOM 元素加载完成后执行
+        document.addEventListener('DOMContentLoaded', function() {
+            // 模拟加载过程
+            setTimeout(() => {
+                document.getElementById('loader').classList.add('opacity-0');
+                setTimeout(() => {
+                    document.getElementById('loader').classList.add('hidden');
+                }, 300);
+            }, 800);
+            
+            // 初始化日期选择器的最大日期（当前日期 + 1年）
+            const maxDate = new Date();
+            maxDate.setFullYear(maxDate.getFullYear() + 1);
+            const maxDateStr = maxDate.toISOString().split('T')[0];
+            document.getElementById('leave-start').max = maxDateStr;
+            document.getElementById('leave-end').max = maxDateStr;
+            
+            // 设置默认开始日期为今天
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('leave-start').value = today;
+            document.getElementById('leave-end').value = today;
+            
+            // 加载本地存储的数据（实际应用中会从网络路径加载）
+            loadData();
+            
+            // 绑定事件处理函数
+            bindEvents();
+            
+            // 初始化日历视图
+            renderCalendar(currentDate);
+        });
+        
+        // 绑定所有事件处理函数
+        function bindEvents() {
+            // 登录表单提交
+            document.getElementById('login-form').addEventListener('submit', function(e) {
+                e.preventDefault();
+                login();
+            });
+            
+            // 密码显示/隐藏切换
+            document.getElementById('toggle-password').addEventListener('click', function() {
+                const passwordInput = document.getElementById('password');
+                const type = passwordInput.getAttribute('type') === 'password' ? 'text' : 'password';
+                passwordInput.setAttribute('type', type);
+                
+                // 切换图标
+                const icon = this.querySelector('i');
+                if (type === 'password') {
+                    icon.classList.remove('fa-eye');
+                    icon.classList.add('fa-eye-slash');
+                } else {
+                    icon.classList.remove('fa-eye-slash');
+                    icon.classList.add('fa-eye');
+                }
+            });
+            
+            // 登出
+            document.getElementById('logout-btn').addEventListener('click', function(e) {
+                e.preventDefault();
+                logout();
+            });
+            
+            // 视图切换
+            document.getElementById('list-view-btn').addEventListener('click', function() {
+                switchToView('list');
+            });
+            
+            document.getElementById('calendar-view-btn').addEventListener('click', function() {
+                switchToView('calendar');
+            });
+            
+            // 日历导航
+            document.getElementById('prev-month').addEventListener('click', function() {
+                currentDate.setMonth(currentDate.getMonth() - 1);
+                renderCalendar(currentDate);
+            });
+            
+            document.getElementById('next-month').addEventListener('click', function() {
+                currentDate.setMonth(currentDate.getMonth() + 1);
+                renderCalendar(currentDate);
+            });
+            
+            document.getElementById('today-btn').addEventListener('click', function() {
+                currentDate = new Date();
+                renderCalendar(currentDate);
+            });
+            
+            // 请假类型变更
+            document.getElementById('leave-type').addEventListener('change', function() {
+                const endDateContainer = document.getElementById('end-date-container');
+                if (this.value === 'full') {
+                    endDateContainer.classList.remove('hidden');
+                } else {
+                    endDateContainer.classList.add('hidden');
+                    // 当选择半天假时，结束日期设为与开始日期相同
+                    document.getElementById('leave-end').value = document.getElementById('leave-start').value;
+                }
+                checkForSaturday();
+            });
+            
+            // 日期变更时检查是否包含周六
+            document.getElementById('leave-start').addEventListener('change', checkForSaturday);
+            document.getElementById('leave-end').addEventListener('change', checkForSaturday);
+            
+            // 请假表单提交
+            document.getElementById('leave-form').addEventListener('submit', function(e) {
+                e.preventDefault();
+                submitLeaveRequest();
+            });
+            
+            // 导出Excel
+            document.getElementById('export-excel-btn').addEventListener('click', exportToExcel);
+            
+            // 导出PDF
+            document.getElementById('export-pdf-btn').addEventListener('click', exportToPDF);
+            
+            // 更改密码按钮
+            document.getElementById('change-password-btn').addEventListener('click', function() {
+                showChangePasswordModal(currentUser.id);
+            });
+            
+            // 管理员功能按钮
+            document.getElementById('add-employee-btn').addEventListener('click', showAddEmployeeModal);
+            document.getElementById('set-annual-leave-btn').addEventListener('click', showSetAnnualLeaveModal);
+            document.getElementById('manage-supervisors-btn').addEventListener('click', showManageSupervisorsModal);
+            document.getElementById('edit-employee-password-btn').addEventListener('click', showEditEmployeePasswordModal);
+            
+            // 模态框按钮
+            document.getElementById('close-modal').addEventListener('click', closeModal);
+            document.getElementById('modal-cancel').addEventListener('click', closeModal);
+            document.getElementById('modal-confirm').addEventListener('click', handleModalConfirm);
+        }
+        
+        // 切换视图（列表/日历）
+        function switchToView(viewType) {
+            currentView = viewType;
+            
+            const listViewBtn = document.getElementById('list-view-btn');
+            const calendarViewBtn = document.getElementById('calendar-view-btn');
+            const listView = document.getElementById('list-view');
+            const calendarView = document.getElementById('calendar-view');
+            
+            if (viewType === 'list') {
+                listViewBtn.classList.add('text-primary', 'border-b-2', 'border-primary', 'font-medium');
+                listViewBtn.classList.remove('text-neutral-light');
+                calendarViewBtn.classList.remove('text-primary', 'border-b-2', 'border-primary', 'font-medium');
+                calendarViewBtn.classList.add('text-neutral-light');
+                listView.classList.remove('hidden');
+                calendarView.classList.add('hidden');
+            } else {
+                calendarViewBtn.classList.add('text-primary', 'border-b-2', 'border-primary', 'font-medium');
+                calendarViewBtn.classList.remove('text-neutral-light');
+                listViewBtn.classList.remove('text-primary', 'border-b-2', 'border-primary', 'font-medium');
+                listViewBtn.classList.add('text-neutral-light');
+                calendarView.classList.remove('hidden');
+                listView.classList.add('hidden');
+            }
+        }
+        
+        // 加载数据（实际应用中会从网络路径加载）
+        function loadData() {
+            // 从本地存储加载数据（实际应用中会替换为从网络路径读取文件）
+            const savedUsers = localStorage.getItem('alr_users');
+            const savedLeaves = localStorage.getItem('alr_leaves');
+            
+            // 如果没有数据，初始化一些示例数据
+            if (!savedUsers) {
+                allUsers = [
+                    {
+                        id: 'admin',
+                        password: 'admin123',
+                        name: '管理员',
+                        role: 'admin',
+                        totalAnnualLeave: 0,
+                        supervisor: null
+                    },
+                    {
+                        id: 'emp1',
+                        password: 'emp123',
+                        name: '张三',
+                        role: 'employee',
+                        totalAnnualLeave: 15,
+                        supervisor: 'admin'
+                    },
+                    {
+                        id: 'emp2',
+                        password: 'emp123',
+                        name: '李四',
+                        role: 'employee',
+                        totalAnnualLeave: 15,
+                        supervisor: 'admin'
+                    }
+                ];
+                saveUsers();
+            } else {
+                allUsers = JSON.parse(savedUsers);
+            }
+            
+            if (!savedLeaves) {
+                leaveRecords = [
+                    {
+                        id: 1,
+                        employeeId: 'emp1',
+                        startDate: '2023-06-10',
+                        endDate: '2023-06-12',
+                        type: 'full',
+                        days: 3,
+                        reason: '家庭旅行',
+                        status: 'approved',
+                        approver: 'admin',
+                        approvalDate: '2023-06-01'
+                    },
+                    {
+                        id: 2,
+                        employeeId: 'emp1',
+                        startDate: '2023-07-05',
+                        endDate: '2023-07-05',
+                        type: 'morning',
+                        days: 0.5,
+                        reason: '就医',
+                        status: 'approved',
+                        approver: 'admin',
+                        approvalDate: '2023-07-01'
+                    },
+                    {
+                        id: 3,
+                        employeeId: 'emp2',
+                        startDate: '2023-08-20',
+                        endDate: '2023-08-25',
+                        type: 'full',
+                        days: 5,
+                        reason: '休年假',
+                        status: 'pending',
+                        approver: 'admin',
+                        approvalDate: null
+                    }
+                ];
+                saveLeaves();
+            } else {
+                leaveRecords = JSON.parse(savedLeaves);
+            }
+        }
+        
+        // 登录功能
+        function login() {
+            const username = document.getElementById('username').value.trim();
+            const password = document.getElementById('password').value;
+            
+            // 查找用户
+            const user = allUsers.find(u => u.id === username && u.password === password);
+            
+            if (user) {
+                currentUser = user;
+                document.getElementById('login-error').classList.add('hidden');
+                
+                // 显示应用界面
+                document.getElementById('login-page').classList.add('hidden');
+                document.getElementById('app').classList.remove('hidden');
+                
+                // 更新界面显示
+                updateUIForUser();
+                
+                // 显示成功提示
+                showToast('登录成功', 'success');
+            } else {
+                // 显示错误信息
+                document.getElementById('login-error').classList.remove('hidden');
+                // 添加抖动动画
+                const loginForm = document.getElementById('login-form');
+                loginForm.classList.add('animate-shake');
+                setTimeout(() => {
+                    loginForm.classList.remove('animate-shake');
+                }, 500);
+            }
+        }
+        
+        // 登出功能
+        function logout() {
+            currentUser = null;
+            document.getElementById('app').classList.add('hidden');
+            document.getElementById('login-page').classList.remove('hidden');
+            document.getElementById('login-form').reset();
+            showToast('已成功登出', 'info');
+        }
+        
+        // 根据当前用户更新界面
+        function updateUIForUser() {
+            // 显示当前用户名
+            document.getElementById('current-user').textContent = currentUser.name;
+            
+            // 管理员功能区可见性
+            if (currentUser.role === 'admin') {
+                document.getElementById('admin-section').classList.remove('hidden');
+                document.getElementById('approver-header').classList.remove('hidden');
+            } else {
+                document.getElementById('admin-section').classList.add('hidden');
+                document.getElementById('approver-header').classList.add('hidden');
+            }
+            
+            // 待批准假区域可见性（管理员或有下属的员工）
+            const hasPendingLeaves = getPendingLeavesForApproval().length > 0;
+            if (currentUser.role === 'admin' || hasPendingLeaves) {
+                document.getElementById('pending-leaves-section').classList.remove('hidden');
+                renderPendingLeaves();
+            } else {
+                document.getElementById('pending-leaves-section').classList.add('hidden');
+            }
+            
+            // 更新年假统计
+            updateLeaveStats();
+            
+            // 加载并显示请假记录
+            renderLeaveRecords();
+        }
+        
+        // 更新年假统计信息
+        function updateLeaveStats() {
+            if (!currentUser) return;
+            
+            const totalDays = currentUser.totalAnnualLeave;
+            const usedDays = calculateUsedLeaveDays(currentUser.id);
+            const remainingDays = totalDays - usedDays;
+            
+            document.getElementById('total-days').textContent = totalDays;
+            document.getElementById('used-days').textContent = usedDays.toFixed(1);
+            document.getElementById('remaining-days').textContent = remainingDays.toFixed(1);
+        }
+        
+        // 计算已使用的年假天数
+        function calculateUsedLeaveDays(employeeId) {
+            return leaveRecords
+                .filter(record => record.employeeId === employeeId && record.status === 'approved')
+                .reduce((total, record) => total + record.days, 0);
+        }
+        
+        // 渲染请假记录列表
+        function renderLeaveRecords() {
+            const recordsContainer = document.getElementById('leave-records');
+            recordsContainer.innerHTML = '';
+            
+            // 根据当前用户角色筛选记录
+            let userRecords = [];
+            if (currentUser.role === 'admin') {
+                // 管理员可以看到所有记录
+                userRecords = leaveRecords;
+            } else {
+                // 员工只能看到自己的记录
+                userRecords = leaveRecords.filter(record => record.employeeId === currentUser.id);
+            }
+            
+            // 按日期排序（最新的在前）
+            userRecords.sort((a, b) => new Date(b.startDate) - new Date(a.startDate));
+            
+            if (userRecords.length === 0) {
+                recordsContainer.innerHTML = `
+                    <tr>
+                        <td colspan="6" class="px-4 py-8 text-center text-neutral-light">暂无请假记录</td>
+                    </tr>
+                `;
+                return;
+            }
+            
+            // 生成记录列表
+            userRecords.forEach(record => {
+                const employee = allUsers.find(u => u.id === record.employeeId);
+                const approver = record.approver ? allUsers.find(u => u.id === record.approver) : null;
+                
+                let statusClass = '';
+                let statusText = '';
+                
+                switch (record.status) {
+                    case 'pending':
+                        statusClass = 'bg-warning/10 text-warning';
+                        statusText = '待批准';
+                        break;
+                    case 'approved':
+                        statusClass = 'bg-success/10 text-success';
+                        statusText = '已批准';
+                        break;
+                    case 'rejected':
+                        statusClass = 'bg-danger/10 text-danger';
+                        statusText = '已拒绝';
+                        break;
+                }
+                
+                let dateText = record.startDate;
+                if (record.startDate !== record.endDate) {
+                    dateText += ` - ${record.endDate}`;
+                }
+                
+                let typeText = '全天';
+                if (record.type === 'morning') typeText = '上午';
+                if (record.type === 'afternoon') typeText = '下午';
+                
+                const row = document.createElement('tr');
+                row.className = 'hover:bg-gray-50 transition-all-300';
+                
+                let approverCell = '';
+                if (currentUser.role === 'admin') {
+                    approverCell = `
+                        <td class="px-4 py-3 whitespace-nowrap text-sm text-neutral">
+                            ${approver ? approver.name : '-'}
+                        </td>
+                    `;
+                }
+                
+                row.innerHTML = `
+                    <td class="px-4 py-3 whitespace-nowrap text-sm text-neutral">
+                        ${dateText}
+                        ${currentUser.role === 'admin' ? `<br><span class="text-xs text-neutral-light">${employee.name}</span>` : ''}
+                    </td>
+                    <td class="px-4 py-3 whitespace-nowrap text-sm text-neutral">
+                        ${typeText}
+                    </td>
+                    <td class="px-4 py-3 whitespace-nowrap text-sm text-neutral">
+                        ${record.days}
+                    </td>
+                    <td class="px-4 py-3 text-sm text-neutral">
+                        ${record.reason}
+                    </td>
+                    <td class="px-4 py-3 whitespace-nowrap">
+                        <span class="px-2 py-1 text-xs rounded-full ${statusClass}">
+                            ${statusText}
+                        </span>
+                    </td>
+                    ${approverCell}
+                `;
+                
+                recordsContainer.appendChild(row);
+            });
+        }
+        
+        // 检查请假日期是否包含周六
+        function checkForSaturday() {
+            const startDate = new Date(document.getElementById('leave-start').value);
+            const endDate = document.getElementById('leave-end').value 
+                ? new Date(document.getElementById('leave-end').value) 
+                : startDate;
+            
+            const warningElement = document.getElementById('leave-warning');
+            let hasSaturday = false;
+            
+            // 检查日期范围内是否有周六
+            for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+                if (d.getDay() === 6) { // 6 表示周六
+                    hasSaturday = true;
+                    break;
+                }
+            }
+            
+            if (hasSaturday) {
+                warningElement.classList.remove('hidden');
+            } else {
+                warningElement.classList.add('hidden');
+            }
+            
+            // 检查是否超过一年
+            const maxDate = new Date();
+            maxDate.setFullYear(maxDate.getFullYear() + 1);
+            
+            const dateErrorElement = document.getElementById('date-validation-error');
+            if (endDate > maxDate) {
+                dateErrorElement.classList.remove('hidden');
+                return false;
+            } else {
+                dateErrorElement.classList.add('hidden');
+                return true;
+            }
+        }
+        
+        // 计算请假天数（考虑周六为半天）
+        function calculateLeaveDays(startDateStr, endDateStr, type) {
+            if (type !== 'full') {
+                return 0.5; // 上午或下午请假都按半天计算
+            }
+            
+            const startDate = new Date(startDateStr);
+            const endDate = new Date(endDateStr);
+            
+            // 计算总天数
+            let totalDays = 0;
+            for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+                const dayOfWeek = d.getDay();
+                if (dayOfWeek !== 0) { // 排除周日
+                    if (dayOfWeek === 6) { // 周六算半天
+                        totalDays += 0.5;
+                    } else { // 工作日算全天
+                        totalDays += 1;
+                    }
+                }
+            }
+            
+            return totalDays;
+        }
+        
+        // 提交请假申请
+        function submitLeaveRequest() {
+            const leaveType = document.getElementById('leave-type').value;
+            const startDate = document.getElementById('leave-start').value;
+            let endDate = document.getElementById('leave-end').value;
+            const reason = document.getElementById('leave-reason').value.trim();
+            
+            // 对于半天假，结束日期与开始日期相同
+            if (leaveType !== 'full') {
+                endDate = startDate;
+            }
+            
+            // 验证日期
+            if (!checkForSaturday()) {
+                return;
+            }
+            
+            // 计算请假天数
+            const days = calculateLeaveDays(startDate, endDate, leaveType);
+            
+            // 检查剩余年假是否足够
+            const usedDays = calculateUsedLeaveDays(currentUser.id);
+            if (usedDays + days > currentUser.totalAnnualLeave) {
+                showToast('请假天数超过剩余年假，请调整', 'error');
+                return;
+            }
+            
+            // 创建新的请假记录
+            const newRecord = {
+                id: Date.now(), // 使用时间戳作为唯一ID
+                employeeId: currentUser.id,
+                startDate: startDate,
+                endDate: endDate,
+                type: leaveType,
+                days: days,
+                reason: reason,
+                status: 'pending', // 默认为待批准状态
+                approver: currentUser.supervisor || 'admin', // 直属上司或管理员审批
+                approvalDate: null
+            };
+            
+            // 添加到记录列表并保存
+            leaveRecords.push(newRecord);
+            saveLeaves();
+            
+            // 更新界面
+            renderLeaveRecords();
+            renderCalendar(currentDate);
+            updateLeaveStats();
+            
+            // 如果当前用户是管理员或有审批权限，更新待审批列表
+            if (currentUser.role === 'admin' || currentUser.id === newRecord.approver) {
+                document.getElementById('pending-leaves-section').classList.remove('hidden');
+                renderPendingLeaves();
+            }
+            
+            // 重置表单
+            document.getElementById('leave-form').reset();
+            document.getElementById('leave-start').value = new Date().toISOString().split('T')[0];
+            document.getElementById('leave-end').value = new Date().toISOString().split('T')[0];
+            
+            // 显示成功提示
+            showToast('请假申请已提交，等待审批', 'success');
+        }
+        
+        // 获取需要当前用户审批的假单
+        function getPendingLeavesForApproval() {
+            if (!currentUser) return [];
+            
+            return leaveRecords.filter(record => 
+                record.status === 'pending' && 
+                (record.approver === currentUser.id || currentUser.role === 'admin')
+            );
+        }
+        
+        // 渲染待批准的假单
+        function renderPendingLeaves() {
+            const container = document.getElementById('pending-leaves-list');
+            const pendingLeaves = getPendingLeavesForApproval();
+            
+            container.innerHTML = '';
+            
+            if (pendingLeaves.length === 0) {
+                container.innerHTML = '<div class="text-center text-neutral-light py-6">暂无待批准的请假申请</div>';
+                return;
+            }
+            
+            pendingLeaves.forEach(leave => {
+                const employee = allUsers.find(u => u.id === leave.employeeId);
+                
+                let dateText = leave.startDate;
+                if (leave.startDate !== leave.endDate) {
+                    dateText += ` - ${leave.endDate}`;
+                }
+                
+                let typeText = '全天';
+                if (leave.type === 'morning') typeText = '上午';
+                if (leave.type === 'afternoon') typeText = '下午';
+                
+                const leaveCard = document.createElement('div');
+                leaveCard.className = 'p-4 border border-gray-200 rounded-lg';
+                
+                leaveCard.innerHTML = `
+                    <div class="flex justify-between items-start mb-2">
+                        <h4 class="font-medium text-neutral">${employee.name} 的请假申请</h4>
+                        <span class="text-xs px-2 py-1 bg-warning/10 text-warning rounded-full">${typeText}</span>
+                    </div>
+                    <div class="text-sm text-neutral-light mb-2">
+                        <div class="flex items-center mb-1">
+                            <i class="fa fa-calendar-o mr-2 w-4 text-center"></i>
+                            <span>${dateText} (${leave.days}天)</span>
+                        </div>
+                        <div class="flex items-start">
+                            <i class="fa fa-comment-o mr-2 w-4 text-center mt-1"></i>
+                            <span>${leave.reason}</span>
+                        </div>
+                    </div>
+                    <div class="flex justify-end space-x-2 mt-3">
+                        <button data-id="${leave.id}" data-action="reject" class="px-3 py-1 text-xs border border-danger text-danger rounded hover:bg-danger/5 transition-all-300">
+                            拒绝
+                        </button>
+                        <button data-id="${leave.id}" data-action="approve" class="px-3 py-1 text-xs bg-success text-white rounded hover:bg-success/90 transition-all-300">
+                            批准
+                        </button>
+                    </div>
+                `;
+                
+                container.appendChild(leaveCard);
+            });
+            
+            // 为审批按钮绑定事件
+            document.querySelectorAll('[data-action="approve"], [data-action="reject"]').forEach(button => {
+                button.addEventListener('click', handleLeaveApproval);
+            });
+        }
+        
+        // 处理请假审批
+        function handleLeaveApproval(e) {
+            const leaveId = parseInt(e.currentTarget.getAttribute('data-id'));
+            const action = e.currentTarget.getAttribute('data-action');
+            
+            const leaveIndex = leaveRecords.findIndex(record => record.id === leaveId);
+            if (leaveIndex !== -1) {
+                leaveRecords[leaveIndex].status = action === 'approve' ? 'approved' : 'rejected';
+                leaveRecords[leaveIndex].approvalDate = new Date().toISOString().split('T')[0];
+                
+                // 保存更改
+                saveLeaves();
+                
+                // 更新界面
+                renderPendingLeaves();
+                renderLeaveRecords();
+                renderCalendar(currentDate);
+                updateLeaveStats();
+                
+                // 显示提示
+                const message = action === 'approve' ? '请假申请已批准' : '请假申请已拒绝';
+                showToast(message, 'success');
+            }
+        }
+        
+        // 渲染日历
+        function renderCalendar(date) {
+            const year = date.getFullYear();
+            const month = date.getMonth();
+            
+            // 更新月份标题
+            const monthNames = ['一月', '二月', '三月', '四月', '五月', '六月', '七月', '八月', '九月', '十月', '十一月', '十二月'];
+            document.getElementById('current-month').textContent = `${year}年 ${monthNames[month]}`;
+            
+            const calendarGrid = document.getElementById('calendar-grid');
+            calendarGrid.innerHTML = '';
+            
+            // 获取当月第一天
+            const firstDay = new Date(year, month, 1);
+            // 获取当月最后一天
+            const lastDay = new Date(year, month + 1, 0);
+            
+            // 获取当月第一天是星期几 (0-6, 0是星期日)
+            const firstDayIndex = firstDay.getDay();
+            
+            // 添加上个月的占位天数
+            for (let i = 0; i < firstDayIndex; i++) {
+                const emptyDay = document.createElement('div');
+                emptyDay.className = 'calendar-day p-1';
+                calendarGrid.appendChild(emptyDay);
+            }
+            
+            // 获取需要显示的请假记录
+            let displayRecords = [];
+            if (currentUser.role === 'admin') {
+                // 管理员可以看到所有记录
+                displayRecords = leaveRecords;
+            } else {
+                // 员工只能看到自己的记录
+                displayRecords = leaveRecords.filter(record => record.employeeId === currentUser.id);
+            }
+            
+            // 添加当月的天数
+            for (let i = 1; i <= lastDay.getDate(); i++) {
+                const dayElement = document.createElement('div');
+                const currentDate = new Date(year, month, i);
+                const dateStr = currentDate.toISOString().split('T')[0];
+                const dayOfWeek = currentDate.getDay();
+                
+                // 基础样式
+                let classes = 'calendar-day p-1 border border-gray-200 rounded-md flex flex-col';
+                
+                // 周六样式
+                if (dayOfWeek === 6) {
+                    classes += ' calendar-day-weekend';
+                }
+                
+                // 今天样式
+                const today = new Date();
+                if (i === today.getDate() && month === today.getMonth() && year === today.getFullYear()) {
+                    classes += ' calendar-day-today';
+                }
+                
+                // 检查是否有请假记录
+                const hasLeave = displayRecords.some(record => {
+                    const start = new Date(record.startDate);
+                    const end = new Date(record.endDate);
+                    return currentDate >= start && currentDate <= end;
+                });
+                
+                // 请假记录样式
+                if (hasLeave) {
+                    // 检查请假状态
+                    const leaveRecord = displayRecords.find(record => {
+                        const start = new Date(record.startDate);
+                        const end = new Date(record.endDate);
+                        return currentDate >= start && currentDate <= end;
+                    });
+                    
+                    if (leaveRecord.status === 'pending') {
+                        classes += ' calendar-day-leave';
+                    } else {
+                        classes += ' calendar-day-leave';
+                    }
+                }
+                
+                dayElement.className = classes;
+                
+                // 日期数字
+                const dayNumber = document.createElement('div');
+                dayNumber.className = 'text-sm font-medium mb-1';
+                dayNumber.textContent = i;
+                dayElement.appendChild(dayNumber);
+                
+                // 显示请假标记
+                if (hasLeave) {
+                    const leaveMarker = document.createElement('div');
+                    leaveMarker.className = 'text-xs mt-auto self-start';
+                    
+                    if (leaveRecord.status === 'pending') {
+                        leaveMarker.innerHTML = '<i class="fa fa-clock-o mr-1"></i>待批准';
+                    } else {
+                        leaveMarker.innerHTML = '<i class="fa fa-check mr-1"></i>年假';
+                    }
+                    
+                    dayElement.appendChild(leaveMarker);
+                }
+                
+                calendarGrid.appendChild(dayElement);
+            }
+        }
+        
+        // 导出到Excel
+        function exportToExcel() {
+            // 准备导出的数据
+            let exportRecords = [];
+            
+            if (currentUser.role === 'admin') {
+                // 管理员导出所有记录
+                exportRecords = leaveRecords.map(record => {
+                    const employee = allUsers.find(u => u.id === record.employeeId);
+                    const approver = record.approver ? allUsers.find(u => u.id === record.approver) : null;
+                    
+                    let statusText = '';
+                    switch (record.status) {
+                        case 'pending': statusText = '待批准'; break;
+                        case 'approved': statusText = '已批准'; break;
+                        case 'rejected': statusText = '已拒绝'; break;
+                    }
+                    
+                    let typeText = '全天';
+                    if (record.type === 'morning') typeText = '上午';
+                    if (record.type === 'afternoon') typeText = '下午';
+                    
+                    return {
+                        '员工姓名': employee.name,
+                        '开始日期': record.startDate,
+                        '结束日期': record.endDate,
+                        '请假类型': typeText,
+                        '天数': record.days,
+                        '原因': record.reason,
+                        '状态': statusText,
+                        '审批人': approver ? approver.name : '-'
+                    };
+                });
+            } else {
+                // 员工只导出自己的记录
+                exportRecords = leaveRecords
+                    .filter(record => record.employeeId === currentUser.id)
+                    .map(record => {
+                        let statusText = '';
+                        switch (record.status) {
+                            case 'pending': statusText = '待批准'; break;
+                            case 'approved': statusText = '已批准'; break;
+                            case 'rejected': statusText = '已拒绝'; break;
+                        }
+                        
+                        let typeText = '全天';
+                        if (record.type === 'morning') typeText = '上午';
+                        if (record.type === 'afternoon') typeText = '下午';
+                        
+                        return {
+                            '开始日期': record.startDate,
+                            '结束日期': record.endDate,
+                            '请假类型': typeText,
+                            '天数': record.days,
+                            '原因': record.reason,
+                            '状态': statusText
+                        };
+                    });
+            }
+            
+            // 创建工作簿和工作表
+            const worksheet = XLSX.utils.json_to_sheet(exportRecords);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, "年假记录");
+            
+            // 导出文件
+            const fileName = `${currentUser.name}_年假记录_${new Date().toISOString().split('T')[0]}.xlsx`;
+            XLSX.writeFile(workbook, fileName);
+            
+            showToast('Excel导出成功', 'success');
+        }
+        
+        // 导出到PDF
+        function exportToPDF() {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            
+            // 标题
+            doc.setFontSize(16);
+            doc.text(`${currentUser.name}的年假记录`, 14, 20);
+            
+            // 准备表格数据
+            let tableData = [];
+            let headers = [];
+            
+            if (currentUser.role === 'admin') {
+                // 管理员表格
+                headers = ['员工姓名', '开始日期', '结束日期', '请假类型', '天数', '原因', '状态', '审批人'];
+                
+                tableData = leaveRecords.map(record => {
+                    const employee = allUsers.find(u => u.id === record.employeeId);
+                    const approver = record.approver ? allUsers.find(u => u.id === record.approver) : null;
+                    
+                    let statusText = '';
+                    switch (record.status) {
+                        case 'pending': statusText = '待批准'; break;
+                        case 'approved': statusText = '已批准'; break;
+                        case 'rejected': statusText = '已拒绝'; break;
+                    }
+                    
+                    let typeText = '全天';
+                    if (record.type === 'morning') typeText = '上午';
+                    if (record.type === 'afternoon') typeText = '下午';
+                    
+                    return [
+                        employee.name,
+                        record.startDate,
+                        record.endDate,
+                        typeText,
+                        record.days,
+                        record.reason,
+                        statusText,
+                        approver ? approver.name : '-'
+                    ];
+                });
+            } else {
+                // 员工表格
+                headers = ['开始日期', '结束日期', '请假类型', '天数', '原因', '状态'];
+                
+                tableData = leaveRecords
+                    .filter(record => record.employeeId === currentUser.id)
+                    .map(record => {
+                        let statusText = '';
+                        switch (record.status) {
+                            case 'pending': statusText = '待批准'; break;
+                            case 'approved': statusText = '已批准'; break;
+                            case 'rejected': statusText = '已拒绝'; break;
+                        }
+                        
+                        let typeText = '全天';
+                        if (record.type === 'morning') typeText = '上午';
+                        if (record.type === 'afternoon') typeText = '下午';
+                        
+                        return [
+                            record.startDate,
+                            record.endDate,
+                            typeText,
+                            record.days,
+                            record.reason,
+                            statusText
+                        ];
+                    });
+            }
+            
+            // 添加表格
+            doc.autoTable({
+                head: [headers],
+                body: tableData,
+                startY: 30,
+                theme: 'grid',
+                styles: {
+                    fontSize: 10
+                }
+            });
+            
+            // 保存文件
+            const fileName = `${currentUser.name}_年假记录_${new Date().toISOString().split('T')[0]}.pdf`;
+            doc.save(fileName);
+            
+            showToast('PDF导出成功', 'success');
+        }
+        
+        // 显示模态框
+        function showModal(title, content, confirmCallback) {
+            document.getElementById('modal-title').textContent = title;
+            document.getElementById('modal-content').innerHTML = content;
+            
+            // 存储确认回调
+            document.getElementById('modal-confirm').onclick = confirmCallback;
+            
+            // 显示模态框
+            const backdrop = document.getElementById('modal-backdrop');
+            const modal = document.getElementById('modal-container');
+            
+            backdrop.classList.remove('hidden');
+            // 触发动画
+            setTimeout(() => {
+                modal.classList.remove('scale-95', 'opacity-0');
+                modal.classList.add('scale-100', 'opacity-100');
+            }, 10);
+        }
+        
+        // 关闭模态框
+        function closeModal() {
+            const backdrop = document.getElementById('modal-backdrop');
+            const modal = document.getElementById('modal-container');
+            
+            // 触发关闭动画
+            modal.classList.remove('scale-100', 'opacity-100');
+            modal.classList.add('scale-95', 'opacity-0');
+            
+            setTimeout(() => {
+                backdrop.classList.add('hidden');
+                // 清除确认回调
+                document.getElementById('modal-confirm').onclick = null;
+            }, 300);
+        }
+        
+        // 处理模态框确认
+        function handleModalConfirm() {
+            // 由具体模态框设置的回调函数处理
+        }
+        
+        // 显示更改密码模态框
+        function showChangePasswordModal(userId) {
+            const content = `
+                <input type="hidden" id="user-id" value="${userId}">
+                <div>
+                    <label for="current-password" class="block text-sm font-medium text-neutral mb-1">当前密码</label>
+                    <input type="password" id="current-password" required
+                        class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/50 focus:border-primary outline-none transition-all-300"
+                        placeholder="请输入当前密码">
+                </div>
+                <div>
+                    <label for="new-password" class="block text-sm font-medium text-neutral mb-1">新密码</label>
+                    <input type="password" id="new-password" required
+                        class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/50 focus:border-primary outline-none transition-all-300"
+                        placeholder="请输入新密码">
+                </div>
+                <div>
+                    <label for="confirm-password" class="block text-sm font-medium text-neutral mb-1">确认新密码</label>
+                    <input type="password" id="confirm-password" required
+                        class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/50 focus:border-primary outline-none transition-all-300"
+                        placeholder="请再次输入新密码">
+                </div>
+                <div id="password-error" class="text-danger text-sm hidden">
+                    <i class="fa fa-exclamation-circle mr-1"></i>
+                    <span>两次输入的密码不一致</span>
+                </div>
+                <div id="current-password-error" class="text-danger text-sm hidden">
+                    <i class="fa fa-exclamation-circle mr-1"></i>
+                    <span>当前密码不正确</span>
+                </div>
+            `;
+            
+            showModal('更改密码', content, function() {
+                const userId = document.getElementById('user-id').value;
+                const currentPassword = document.getElementById('current-password').value;
+                const newPassword = document.getElementById('new-password').value;
+                const confirmPassword = document.getElementById('confirm-password').value;
+                
+                // 验证密码
+                const passwordError = document.getElementById('password-error');
+                const currentPasswordError = document.getElementById('current-password-error');
+                
+                passwordError.classList.add('hidden');
+                currentPasswordError.classList.add('hidden');
+                
+                if (newPassword !== confirmPassword) {
+                    passwordError.classList.remove('hidden');
+                    return;
+                }
+                
+                // 查找用户
+                const userIndex = allUsers.findIndex(u => u.id === userId);
+                if (userIndex === -1) {
+                    showToast('用户不存在', 'error');
+                    return;
+                }
+                
+                // 验证当前密码（管理员修改其他用户密码时不需要验证当前密码）
+                if (userId === currentUser.id && allUsers[userIndex].password !== currentPassword) {
+                    currentPasswordError.classList.remove('hidden');
+                    return;
+                }
+                
+                // 更新密码
+                allUsers[userIndex].password = newPassword;
+                saveUsers();
+                
+                closeModal();
+                showToast('密码已成功更新', 'success');
+            });
+        }
+        
+        // 显示新增员工模态框
+        function showAddEmployeeModal() {
+            // 获取所有可能的上级（管理员和其他员工）
+            const supervisors = allUsers.map(user => `
+                <option value="${user.id}">${user.name}</option>
+            `).join('');
+            
+            const content = `
+                <div>
+                    <label for="new-employee-id" class="block text-sm font-medium text-neutral mb-1">员工ID</label>
+                    <input type="text" id="new-employee-id" required
+                        class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/50 focus:border-primary outline-none transition-all-300"
+                        placeholder="请输入员工ID">
+                </div>
+                <div>
+                    <label for="new-employee-name" class="block text-sm font-medium text-neutral mb-1">员工姓名</label>
+                    <input type="text" id="new-employee-name" required
+                        class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/50 focus:border-primary outline-none transition-all-300"
+                        placeholder="请输入员工姓名">
+                </div>
+                <div>
+                    <label for="new-employee-password" class="block text-sm font-medium text-neutral mb-1">初始密码</label>
+                    <input type="password" id="new-employee-password" required
+                        class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/50 focus:border-primary outline-none transition-all-300"
+                        placeholder="请输入初始密码" value="123456">
+                </div>
+                <div>
+                    <label for="new-employee-leave" class="block text-sm font-medium text-neutral mb-1">年假天数</label>
+                    <input type="number" id="new-employee-leave" required min="0" step="0.5"
+                        class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/50 focus:border-primary outline-none transition-all-300"
+                        placeholder="请输入年假天数" value="15">
+                </div>
+                <div>
+                    <label for="new-employee-supervisor" class="block text-sm font-medium text-neutral mb-1">直属上司</label>
+                    <select id="new-employee-supervisor" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/50 focus:border-primary outline-none transition-all-300">
+                        ${supervisors}
+                    </select>
+                </div>
+                <div id="employee-id-exists" class="text-danger text-sm hidden">
+                    <i class="fa fa-exclamation-circle mr-1"></i>
+                    <span>该员工ID已存在</span>
+                </div>
+            `;
+            
+            showModal('新增员工', content, function() {
+                const employeeId = document.getElementById('new-employee-id').value.trim();
+                const employeeName = document.getElementById('new-employee-name').value.trim();
+                const password = document.getElementById('new-employee-password').value;
+                const annualLeave = parseFloat(document.getElementById('new-employee-leave').value);
+                const supervisor = document.getElementById('new-employee-supervisor').value;
+                
+                // 检查员工ID是否已存在
+                const idExists = allUsers.some(user => user.id === employeeId);
+                if (idExists) {
+                    document.getElementById('employee-id-exists').classList.remove('hidden');
+                    return;
+                }
+                
+                // 创建新员工
+                const newEmployee = {
+                    id: employeeId,
+                    password: password,
+                    name: employeeName,
+                    role: 'employee',
+                    totalAnnualLeave: annualLeave,
+                    supervisor: supervisor
+                };
+                
+                // 添加到用户列表并保存
+                allUsers.push(newEmployee);
+                saveUsers();
+                
+                closeModal();
+                showToast('员工已成功添加', 'success');
+            });
+        }
+        
+        // 显示设置年假天数模态框
+        function showSetAnnualLeaveModal() {
+            // 生成员工列表
+            const employeesList = allUsers
+                .filter(user => user.role === 'employee')
+                .map(user => `
+                    <div class="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
+                        <span>${user.name} (${user.id})</span>
+                        <input type="number" data-id="${user.id}" min="0" step="0.5" value="${user.totalAnnualLeave}"
+                            class="w-20 px-2 py-1 border border-gray-300 rounded focus:ring-2 focus:ring-primary/50 focus:border-primary outline-none">
+                    </div>
+                `).join('');
+            
+            const content = `
+                <div class="max-h-64 overflow-y-auto pr-2">
+                    ${employeesList || '<div class="text-center text-neutral-light py-4">暂无员工数据</div>'}
+                </div>
+            `;
+            
+            showModal('设置员工年假天数', content, function() {
+                // 保存所有修改
+                document.querySelectorAll('input[data-id]').forEach(input => {
+                    const userId = input.getAttribute('data-id');
+                    const annualLeave = parseFloat(input.value);
+                    
+                    const userIndex = allUsers.findIndex(u => u.id === userId);
+                    if (userIndex !== -1) {
+                        allUsers[userIndex].totalAnnualLeave = annualLeave;
+                    }
+                });
+                
+                saveUsers();
+                
+                // 更新当前用户的年假统计
+                updateLeaveStats();
+                
+                closeModal();
+                showToast('年假天数已更新', 'success');
+            });
+        }
+        
+        // 显示管理上下级关系模态框
+        function showManageSupervisorsModal() {
+            // 生成员工列表
+            const employees = allUsers.filter(user => user.role === 'employee');
+            const supervisors = allUsers.map(user => `
+                <option value="${user.id}">${user.name}</option>
+            `).join('');
+            
+            const employeesList = employees
+                .map(user => {
+                    // 选中当前直属上司
+                    let options = allUsers.map(supervisor => {
+                        const selected = user.supervisor === supervisor.id ? 'selected' : '';
+                        return `<option value="${supervisor.id}" ${selected}>${supervisor.name}</option>`;
+                    }).join('');
+                    
+                    return `
+                        <div class="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
+                            <span>${user.name} (${user.id})</span>
+                            <select data-id="${user.id}" 
+                                class="w-36 px-2 py-1 border border-gray-300 rounded focus:ring-2 focus:ring-primary/50 focus:border-primary outline-none">
+                                ${options}
+                            </select>
+                        </div>
+                    `;
+                }).join('');
+            
+            const content = `
+                <div class="max-h-64 overflow-y-auto pr-2">
+                    ${employeesList || '<div class="text-center text-neutral-light py-4">暂无员工数据</div>'}
+                </div>
+            `;
+            
+            showModal('管理上下级关系', content, function() {
+                // 保存所有修改
+                document.querySelectorAll('select[data-id]').forEach(select => {
+                    const userId = select.getAttribute('data-id');
+                    const supervisorId = select.value;
+                    
+                    const userIndex = allUsers.findIndex(u => u.id === userId);
+                    if (userIndex !== -1) {
+                        allUsers[userIndex].supervisor = supervisorId;
+                    }
+                });
+                
+                saveUsers();
+                
+                closeModal();
+                showToast('上下级关系已更新', 'success');
+            });
+        }
+        
+        // 显示修改员工密码模态框
+        function showEditEmployeePasswordModal() {
+            // 生成员工列表
+            const employees = allUsers.filter(user => user.role === 'employee');
+            
+            const employeesList = employees
+                .map(user => `
+                    <option value="${user.id}">${user.name} (${user.id})</option>
+                `).join('');
+            
+            const content = `
+                <div>
+                    <label for="edit-password-employee" class="block text-sm font-medium text-neutral mb-1">选择员工</label>
+                    <select id="edit-password-employee" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/50 focus:border-primary outline-none transition-all-300">
+                        ${employeesList || '<option value="">暂无员工数据</option>'}
+                    </select>
+                </div>
+                <div>
+                    <label for="edit-employee-new-password" class="block text-sm font-medium text-neutral mb-1">新密码</label>
+                    <input type="password" id="edit-employee-new-password" required
+                        class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/50 focus:border-primary outline-none transition-all-300"
+                        placeholder="请输入新密码">
+                </div>
+                <div>
+                    <label for="edit-employee-confirm-password" class="block text-sm font-medium text-neutral mb-1">确认新密码</label>
+                    <input type="password" id="edit-employee-confirm-password" required
+                        class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/50 focus:border-primary outline-none transition-all-300"
+                        placeholder="请再次输入新密码">
+                </div>
+                <div id="edit-password-error" class="text-danger text-sm hidden">
+                    <i class="fa fa-exclamation-circle mr-1"></i>
+                    <span>两次输入的密码不一致</span>
+                </div>
+            `;
+            
+            showModal('修改员工密码', content, function() {
+                const employeeId = document.getElementById('edit-password-employee').value;
+                const newPassword = document.getElementById('edit-employee-new-password').value;
+                const confirmPassword = document.getElementById('edit-employee-confirm-password').value;
+                
+                // 验证
+                if (!employeeId) {
+                    showToast('请选择要修改密码的员工', 'error');
+                    return;
+                }
+                
+                if (newPassword !== confirmPassword) {
+                    document.getElementById('edit-password-error').classList.remove('hidden');
+                    return;
+                }
+                
+                // 更新密码
+                const userIndex = allUsers.findIndex(u => u.id === employeeId);
+                if (userIndex !== -1) {
+                    allUsers[userIndex].password = newPassword;
+                    saveUsers();
+                    
+                    closeModal();
+                    showToast('员工密码已更新', 'success');
+                } else {
+                    showToast('员工不存在', 'error');
+                }
+            });
+        }
+        
+        // 显示提示消息
+        function showToast(message, type = 'info') {
+            const toast = document.getElementById('toast');
+            const icon = document.getElementById('toast-icon');
+            const messageElement = document.getElementById('toast-message');
+            
+            // 设置图标和样式
+            icon.className = '';
+            toast.className = 'fixed bottom-6 right-6 px-4 py-3 rounded-lg shadow-lg transform translate-y-20 opacity-0 transition-all duration-300 flex items-center z-50';
+            
+            switch (type) {
+                case 'success':
+                    icon.className = 'fa fa-check-circle mr-2 text-lg text-success';
+                    toast.classList.add('bg-success/10', 'text-success', 'border', 'border-success/20');
+                    break;
+                case 'error':
+                    icon.className = 'fa fa-times-circle mr-2 text-lg text-danger';
+                    toast.classList.add('bg-danger/10', 'text-danger', 'border', 'border-danger/20');
+                    break;
+                case 'warning':
+                    icon.className = 'fa fa-exclamation-triangle mr-2 text-lg text-warning';
+                    toast.classList.add('bg-warning/10', 'text-warning', 'border', 'border-warning/20');
+                    break;
+                default:
+                    icon.className = 'fa fa-info-circle mr-2 text-lg text-primary';
+                    toast.classList.add('bg-primary/10', 'text-primary', 'border', 'border-primary/20');
+            }
+            
+            // 设置消息内容
+            messageElement.textContent = message;
+            
+            // 显示提示
+            setTimeout(() => {
+                toast.classList.remove('translate-y-20', 'opacity-0');
+            }, 10);
+            
+            // 3秒后自动隐藏
+            setTimeout(() => {
+                toast.classList.add('translate-y-20', 'opacity-0');
+            }, 3000);
+        }
+        
+        // 保存用户数据（实际应用中会保存到网络路径）
+        function saveUsers() {
+            // 实际应用中，这里会将数据保存到 "\\192.168.1.202\home\AL Record" 路径下
+            // 这里使用localStorage模拟
+            localStorage.setItem('alr_users', JSON.stringify(allUsers));
+        }
+        
+        // 保存请假记录（实际应用中会保存到网络路径）
+        function saveLeaves() {
+            // 实际应用中，这里会将数据保存到 "\\192.168.1.202\home\AL Record" 路径下
+            // 这里使用localStorage模拟
+            localStorage.setItem('alr_leaves', JSON.stringify(leaveRecords));
+        }
+    </script>
+</body>
+</html>
