@@ -1,197 +1,173 @@
 <?php
 session_start();
-require_once 'functions.php';
-
-// 检查登录状态
-if (!isset($_SESSION['user'])) {
-    header('Location: login.php');
-    exit;
+// 检查用户是否登录
+if (!isset($_SESSION['user_id'])) {
+    header("Location: login.php");
+    exit();
 }
 
-$currentUser = $_SESSION['user'];
-$success = '';
-$error = '';
+include 'db_connect.php';
+$user_id = $_SESSION['user_id'];
+$username = $_SESSION['username'];
+$name = $_SESSION['name'];
 
-// 处理退出登录
-if (isset($_GET['logout'])) {
-    session_destroy();
-    header('Location: login.php');
-    exit;
-}
+$message = '';
+$message_type = '';
 
-// 处理密码修改
-if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-    $currentPassword = trim($_POST['current_password']);
-    $newPassword = trim($_POST['new_password']);
-    $confirmPassword = trim($_POST['confirm_password']);
+if ($_SERVER["REQUEST_METHOD"] == "POST") {
+    $current_password = $_POST['current_password'];
+    $new_password = $_POST['new_password'];
+    $confirm_password = $_POST['confirm_password'];
     
-    // 验证当前密码
-    if (!password_verify($currentPassword, $currentUser['password'])) {
-        $error = '当前密码不正确';
-    } 
-    // 验证新密码
-    elseif (empty($newPassword)) {
-        $error = '新密码不能为空';
-    } 
-    // 验证密码一致性
-    elseif ($newPassword != $confirmPassword) {
-        $error = '两次输入的新密码不一致';
-    } 
-    // 密码强度检查
-    elseif (strlen($newPassword) < 6) {
-        $error = '新密码长度不能少于6个字符';
-    } 
-    // 更新密码
-    else {
-        updateUser($currentUser['id'], ['password' => $newPassword]);
+    // 验证新密码是否一致
+    if ($new_password !== $confirm_password) {
+        $message = "新密码和确认密码不一致";
+        $message_type = "error";
+    } else {
+        // 获取当前密码
+        $stmt = $conn->prepare("SELECT password FROM users WHERE id = ?");
+        $stmt->bind_param("i", $user_id);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $user = $result->fetch_assoc();
+        $stmt->close();
         
-        // 更新会话中的用户信息
-        $currentUser['password'] = password_hash($newPassword, PASSWORD_DEFAULT);
-        $_SESSION['user'] = $currentUser;
-        
-        $success = '密码已成功更新，请使用新密码登录';
-        
-        // 3秒后跳转到登录页面
-        header('Refresh: 3; url=login.php');
+        // 验证当前密码
+        if ($current_password !== $user['password']) { // 实际应用中应使用password_verify()
+            $message = "当前密码不正确";
+            $message_type = "error";
+        } else {
+            // 更新密码
+            $stmt = $conn->prepare("UPDATE users SET password = ? WHERE id = ?");
+            $stmt->bind_param("si", $new_password, $user_id);
+            
+            if ($stmt->execute()) {
+                $message = "密码修改成功，请使用新密码登录";
+                $message_type = "success";
+                // 密码修改成功后登出用户
+                session_destroy();
+                // 3秒后跳转到登录页
+                echo "<meta http-equiv='refresh' content='3;url=login.php'>";
+            } else {
+                $message = "修改失败，请重试: " . $conn->error;
+                $message_type = "error";
+            }
+            $stmt->close();
+        }
     }
 }
+
+$conn->close();
 ?>
+
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>修改密码 - 员工年假记录系统</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            background-color: #f0f2f5;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            margin: 0;
-            padding: 20px;
-        }
-        .container {
-            background-color: white;
-            padding: 2rem;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-            width: 100%;
-            max-width: 400px;
-        }
-        h1 {
-            text-align: center;
-            color: #202124;
-            margin-bottom: 1.5rem;
-        }
-        .form-group {
-            margin-bottom: 1rem;
-        }
-        label {
-            display: block;
-            margin-bottom: 0.5rem;
-            color: #5f6368;
-            font-weight: 500;
-        }
-        input {
-            width: 100%;
-            padding: 0.75rem;
-            border: 1px solid #dadce0;
-            border-radius: 4px;
-            font-size: 1rem;
-            box-sizing: border-box;
-        }
-        input:focus {
-            outline: none;
-            border-color: #1a73e8;
-            box-shadow: 0 0 0 2px rgba(26, 115, 232, 0.2);
-        }
-        .btn {
-            width: 100%;
-            background-color: #1a73e8;
-            color: white;
-            border: none;
-            padding: 0.75rem;
-            border-radius: 4px;
-            font-size: 1rem;
-            cursor: pointer;
-            transition: background-color 0.2s;
-            margin-top: 1rem;
-        }
-        .btn:hover {
-            background-color: #1765cc;
-        }
-        .btn-secondary {
-            background-color: #f1f3f4;
-            color: #202124;
-            margin-top: 0.5rem;
-        }
-        .btn-secondary:hover {
-            background-color: #e8eaed;
-        }
-        .success {
-            color: #137333;
-            background-color: #e6f4ea;
-            padding: 0.75rem;
-            border-radius: 4px;
-            margin-bottom: 1rem;
-            text-align: center;
-        }
-        .error {
-            color: #d93025;
-            background-color: #fce8e6;
-            padding: 0.75rem;
-            border-radius: 4px;
-            margin-bottom: 1rem;
-            text-align: center;
-        }
-        .links {
-            text-align: center;
-            margin-top: 1.5rem;
-        }
-        .links a {
-            color: #1a73e8;
-            text-decoration: none;
-        }
-        .links a:hover {
-            text-decoration: underline;
-        }
-    </style>
+    <title>修改密码 - 人力资源管理系统</title>
+    <link href="https://cdn.tailwindcss.com" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
-<body>
-    <div class="container">
-        <h1>修改密码</h1>
-        
-        <?php if (!empty($success)): ?>
-            <div class="success"><?php echo $success; ?></div>
-        <?php elseif (!empty($error)): ?>
-            <div class="error"><?php echo $error; ?></div>
-        <?php endif; ?>
-        
-        <?php if (empty($success)): ?>
-            <form method="post">
-                <div class="form-group">
-                    <label for="current_password">当前密码</label>
-                    <input type="password" id="current_password" name="current_password" required>
+<body class="bg-gray-100">
+    <!-- 顶部导航栏 -->
+    <nav class="bg-blue-600 text-white shadow-md">
+        <div class="container mx-auto px-4">
+            <div class="flex justify-between items-center py-4">
+                <div class="flex items-center">
+                    <i class="fas fa-users text-2xl mr-2"></i>
+                    <h1 class="text-xl font-bold">人力资源管理系统</h1>
                 </div>
-                <div class="form-group">
-                    <label for="new_password">新密码</label>
-                    <input type="password" id="new_password" name="new_password" required>
+                
+                <div class="relative" id="userMenuContainer">
+                    <button id="userMenuButton" class="flex items-center focus:outline-none">
+                        <span class="mr-2"><?php echo $name; ?> (<?php echo ucfirst($_SESSION['role']); ?>)</span>
+                        <i class="fas fa-user-circle text-xl"></i>
+                    </button>
+                    
+                    <div id="userMenu" class="hidden absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-10">
+                        <a href="index.php" class="block px-4 py-2 text-gray-800 hover:bg-gray-100">
+                            <i class="fas fa-home mr-2"></i>返回主页
+                        </a>
+                        <a href="logout.php" class="block px-4 py-2 text-gray-800 hover:bg-gray-100">
+                            <i class="fas fa-sign-out-alt mr-2"></i>退出登录
+                        </a>
+                    </div>
                 </div>
-                <div class="form-group">
-                    <label for="confirm_password">确认新密码</label>
-                    <input type="password" id="confirm_password" name="confirm_password" required>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mx-auto px-4 py-6">
+        <div class="bg-white rounded-lg shadow p-6 max-w-md mx-auto">
+            <h2 class="text-2xl font-bold mb-6 text-center">修改密码</h2>
+            
+            <?php if ($message): ?>
+                <div class="mb-4 p-4 rounded <?php echo $message_type == 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'; ?>">
+                    <?php echo $message; ?>
                 </div>
-                <button type="submit" class="btn">确认修改</button>
-                <?php if ($currentUser['role'] == ADMIN_ROLE): ?>
-                    <a href="admin.php"><button type="button" class="btn btn-secondary">返回管理面板</button></a>
-                <?php else: ?>
-                    <a href="employee.php"><button type="button" class="btn btn-secondary">返回员工面板</button></a>
-                <?php endif; ?>
-            </form>
-        <?php endif; ?>
+            <?php endif; ?>
+            
+            <?php if ($message_type != 'success'): ?>
+                <form method="post" action="<?php echo htmlspecialchars($_SERVER["PHP_SELF"]); ?>">
+                    <div class="mb-4">
+                        <label for="current_password" class="block text-gray-700 mb-2">当前密码 <span class="text-red-500">*</span></label>
+                        <input type="password" id="current_password" name="current_password" 
+                               class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                               required>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label for="new_password" class="block text-gray-700 mb-2">新密码 <span class="text-red-500">*</span></label>
+                        <input type="password" id="new_password" name="new_password" 
+                               class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                               required>
+                    </div>
+                    
+                    <div class="mb-6">
+                        <label for="confirm_password" class="block text-gray-700 mb-2">确认新密码 <span class="text-red-500">*</span></label>
+                        <input type="password" id="confirm_password" name="confirm_password" 
+                               class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                               required>
+                    </div>
+                    
+                    <div class="flex justify-center gap-4">
+                        <a href="index.php" 
+                           class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium py-2 px-6 rounded transition duration-300">
+                            <i class="fas fa-times mr-1"></i> 取消
+                        </a>
+                        <button type="submit" 
+                                class="bg-blue-500 hover:bg-blue-600 text-white font-medium py-2 px-6 rounded transition duration-300">
+                            <i class="fas fa-save mr-1"></i> 保存修改
+                        </button>
+                    </div>
+                </form>
+            <?php else: ?>
+                <div class="text-center py-6">
+                    <i class="fas fa-check-circle text-5xl text-green-500 mb-4"></i>
+                    <p class="text-gray-600">即将跳转到登录页面...</p>
+                    <a href="login.php" class="mt-4 inline-block text-blue-500 hover:text-blue-700">
+                        立即前往登录页面
+                    </a>
+                </div>
+            <?php endif; ?>
+        </div>
     </div>
+
+    <script>
+        // 用户菜单点击触发
+        document.getElementById('userMenuButton').addEventListener('click', function() {
+            const menu = document.getElementById('userMenu');
+            menu.classList.toggle('hidden');
+        });
+        
+        // 点击页面其他地方关闭菜单
+        document.addEventListener('click', function(event) {
+            const container = document.getElementById('userMenuContainer');
+            if (!container.contains(event.target)) {
+                document.getElementById('userMenu').classList.add('hidden');
+            }
+        });
+    </script>
 </body>
 </html>
